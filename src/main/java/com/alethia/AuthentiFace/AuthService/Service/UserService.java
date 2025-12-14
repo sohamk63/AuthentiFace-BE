@@ -9,6 +9,6 @@ import com.alethia.AuthentiFace.AuthService.Entities.User;
 
 
 public interface UserService {
-    User register(RegisterUserDto user);
+    User saveUser(User regUser);
     Optional<User> findByEmail(String email);
 }
