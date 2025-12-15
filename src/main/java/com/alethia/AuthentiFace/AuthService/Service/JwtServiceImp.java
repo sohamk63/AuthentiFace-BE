@@ -45,7 +45,7 @@ public class JwtServiceImp implements JwtService {
                 .compact();
     }
 
-  
+    @Override
     public boolean validateToken(String token) {
         try {
             getClaims(token);
@@ -55,8 +55,7 @@ public class JwtServiceImp implements JwtService {
         }
     }
 
-    
-
+    @Override
     public String getUsernameFromToken(String token) {
         return getClaims(token).getSubject();
     }
