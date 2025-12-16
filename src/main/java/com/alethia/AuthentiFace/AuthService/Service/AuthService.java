@@ -8,5 +8,5 @@ import com.alethia.AuthentiFace.AuthService.Entities.User;
 
 public interface AuthService {
     void register(RegisterUserDto user);
-    Authentication login(LoginDto loginReq);
+    String login(LoginDto loginReq);
 }
