@@ -1,12 +1,8 @@
 package com.alethia.AuthentiFace.AuthService.Service;
 
-import java.time.LocalDateTime;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.crypto.password.PasswordEncoder;
-
-import com.alethia.AuthentiFace.AuthService.DTOs.RegisterUserDto;
 import com.alethia.AuthentiFace.AuthService.Entities.User;
 import com.alethia.AuthentiFace.AuthService.Repository.UserRepository;
 
