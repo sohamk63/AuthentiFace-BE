@@ -1,4 +1,4 @@
-package com.alethia.AuthentiFace.AuthService.Service;
+package com.alethia.AuthentiFace.AuthService.Service.filters;
 
 import java.io.IOException;
 
@@ -10,6 +10,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.alethia.AuthentiFace.AuthService.Service.interfaces.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

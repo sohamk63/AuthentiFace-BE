@@ -1,4 +1,4 @@
-package com.alethia.AuthentiFace.AuthService.Service;
+package com.alethia.AuthentiFace.AuthService.Service.interfaces;
 
 import java.util.Optional;
 

@@ -1,6 +1,7 @@
-package com.alethia.AuthentiFace.AuthService.Service;
+package com.alethia.AuthentiFace.AuthService.Service.interfaces;
 
 import java.util.Collection;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.GrantedAuthority;
@@ -17,6 +18,10 @@ public class UserPrincipal implements UserDetails {
     
     public UserPrincipal(User user){
         this.user = user;
+    }
+
+    public UUID getUserId() {
+        return user.getUserId();
     }
 
     @Override

@@ -1,35 +1,28 @@
-package com.alethia.AuthentiFace.AuthService.Service;
+package com.alethia.AuthentiFace.AuthService.Service.impl;
 
 import java.time.LocalDateTime;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import com.alethia.AuthentiFace.AuthService.DTOs.LoginDto;
 import com.alethia.AuthentiFace.AuthService.DTOs.RegisterUserDto;
 import com.alethia.AuthentiFace.AuthService.Entities.Roles;
 import com.alethia.AuthentiFace.AuthService.Entities.User;
+import com.alethia.AuthentiFace.AuthService.Service.interfaces.RegisterService;
+import com.alethia.AuthentiFace.AuthService.Service.interfaces.UserService;
 
 @Service
-public class AuthServiceImp implements AuthService {
+public class RegisterServiceImp implements RegisterService {
 
     private final PasswordEncoder passwordEncoder;
     private final UserService userService;
-    private final AuthenticationManager authenticationManager;
-    private final JwtService jwtService;
-   
     
     @Autowired
-    public AuthServiceImp(PasswordEncoder passwordEncoder, UserService userService, AuthenticationManager authenticationManager, JwtService jwtService){
+    public RegisterServiceImp(PasswordEncoder passwordEncoder, UserService userService){
         this.passwordEncoder = passwordEncoder;
         this.userService = userService;
-        this.authenticationManager = authenticationManager;
-        this.jwtService = jwtService;
     }
 
     @Override
@@ -43,12 +36,5 @@ public class AuthServiceImp implements AuthService {
         u.setPassword(passwordEncoder.encode(userDto.getPassword()));
         u.setRole(Set.of(Roles.USER));       
         userService.saveUser(u);
-    }
-
-    @Override
-    public String login(LoginDto loginReq){
-        UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = new UsernamePasswordAuthenticationToken(loginReq.getEmail(), loginReq.getPassword());
-        Authentication auth = authenticationManager.authenticate(usernamePasswordAuthenticationToken);   
-        return jwtService.getToken(auth);
     }
 }
