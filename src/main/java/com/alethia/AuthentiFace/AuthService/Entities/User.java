@@ -43,5 +43,8 @@ public class User {
     private Set<Roles> role;      
 
     private LocalDateTime createdAt;
+
+    @Column(columnDefinition = "boolean default false")
+    private Boolean faceEnrolled = false;
     
 }

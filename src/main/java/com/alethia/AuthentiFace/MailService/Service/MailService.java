@@ -1,8 +1,10 @@
 package com.alethia.AuthentiFace.MailService.Service;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.alethia.AuthentiFace.MailService.DTO.MailResponse;
 import com.alethia.AuthentiFace.MailService.DTO.PageResponse;
@@ -62,4 +64,17 @@ public interface MailService {
      * @return Count of unread mails
      */
     long getUnreadCount(UUID recipientId);
+
+    /**
+     * Open/read mail content, with face verification for confidential mails
+     *
+     * @param mailId UUID of the mail
+     * @param recipientId UUID of the recipient
+     * @param faceFrames List of face images for verification (required if confidential)
+     * @return Mail content
+     * @throws MailNotFoundException if mail doesn't exist
+     * @throws UnauthorizedException if recipient is not a recipient of this mail
+     * @throws FaceVerificationException if face verification fails for confidential mail
+     */
+    MailResponse openMail(UUID mailId, UUID recipientId, List<MultipartFile> faceFrames);
 }

@@ -39,12 +39,16 @@ public class Mail {
     private LocalDateTime updatedAt;
 
     @Column(columnDefinition = "boolean default false")
+    private Boolean isConfidential = false;
+
+    @Column(columnDefinition = "boolean default false")
     private Boolean isDeleted = false;
 
     @jakarta.persistence.PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        isConfidential = false;
         isDeleted = false;
     }
 

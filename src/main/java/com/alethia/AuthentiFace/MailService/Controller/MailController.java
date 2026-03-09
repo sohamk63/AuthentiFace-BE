@@ -10,10 +10,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -25,10 +27,13 @@ import com.alethia.AuthentiFace.MailService.DTO.PageResponse;
 import com.alethia.AuthentiFace.MailService.DTO.SendMailRequest;
 import com.alethia.AuthentiFace.MailService.DTO.SendMailResponse;
 import com.alethia.AuthentiFace.MailService.DTO.SentMailResponse;
+import com.alethia.AuthentiFace.MailService.DTO.OpenMailRequest;
 import com.alethia.AuthentiFace.MailService.Service.MailService;
 
 import jakarta.validation.Valid;
 
+
+@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/api/mail")
 public class MailController {
@@ -51,9 +56,9 @@ public class MailController {
      * @param request Mail details and recipients
      * @return Response with mail ID confirmation
      */
-    @PostMapping("/send")
+    @PostMapping(value = "/send", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<SendMailResponse> sendMail(
-            @Valid @RequestBody SendMailRequest request
+            @Valid @ModelAttribute SendMailRequest request
     ) {
         UUID senderId = getAuthenticatedUserId();
         SendMailResponse response = mailService.sendMail(senderId, request);
@@ -109,6 +114,23 @@ public class MailController {
         UUID recipientId = getAuthenticatedUserId();
         mailService.markAsRead(mailId, recipientId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Open/read mail content, with face verification for confidential mails
+     *
+     * @param mailId UUID of the mail
+     * @param faceFrames List of face images for verification (required if confidential)
+     * @return Mail content
+     */
+    @PostMapping(value = "/{mailId}/open", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<MailResponse> openMail(
+            @PathVariable UUID mailId,
+            @ModelAttribute OpenMailRequest request
+    ) {
+        UUID recipientId = getAuthenticatedUserId();
+        MailResponse response = mailService.openMail(mailId, recipientId, request.getFaceFrames());
+        return ResponseEntity.ok(response);
     }
 
     /**

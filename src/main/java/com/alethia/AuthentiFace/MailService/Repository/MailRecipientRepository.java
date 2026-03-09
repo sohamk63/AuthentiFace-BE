@@ -39,10 +39,10 @@ public interface MailRecipientRepository extends JpaRepository<MailRecipient, UU
      */
     @Query("SELECT mr FROM MailRecipient mr " +
            "JOIN FETCH mr.mail m " +
-           "WHERE mr.id = :recipientId AND mr.recipientId = :userId AND mr.isDeleted = false")
+           "WHERE m.id = :mailId AND mr.recipientId = :recipientId AND mr.isDeleted = false")
     Optional<MailRecipient> findByIdAndRecipientIdAndNotDeleted(
-            @Param("recipientId") UUID recipientId,
-            @Param("userId") UUID userId
+            @Param("mailId") UUID mailId,
+            @Param("recipientId") UUID recipientId
     );
 
     /**

@@ -27,4 +27,6 @@ public class MailResponse {
     private Boolean isRead;
 
     private LocalDateTime readAt;
+
+    private Boolean isConfidential;
 }

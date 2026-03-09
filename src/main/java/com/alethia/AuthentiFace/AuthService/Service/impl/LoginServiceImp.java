@@ -1,5 +1,7 @@
 package com.alethia.AuthentiFace.AuthService.Service.impl;
 
+import java.util.Optional;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -7,19 +9,23 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import com.alethia.AuthentiFace.AuthService.DTOs.LoginDto;
+import com.alethia.AuthentiFace.AuthService.Entities.User;
 import com.alethia.AuthentiFace.AuthService.Service.interfaces.JwtService;
 import com.alethia.AuthentiFace.AuthService.Service.interfaces.LoginService;
+import com.alethia.AuthentiFace.AuthService.Service.interfaces.UserService;
 
 @Service
 public class LoginServiceImp implements LoginService {
 
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
+    private final UserService userService;
     
     @Autowired
-    public LoginServiceImp(AuthenticationManager authenticationManager, JwtService jwtService){
+    public LoginServiceImp(AuthenticationManager authenticationManager, JwtService jwtService, UserService userService){
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
+        this.userService = userService;
     }
 
     @Override
@@ -27,5 +33,13 @@ public class LoginServiceImp implements LoginService {
         UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = new UsernamePasswordAuthenticationToken(loginReq.getEmail(), loginReq.getPassword());
         Authentication auth = authenticationManager.authenticate(usernamePasswordAuthenticationToken);   
         return jwtService.getToken(auth);
+    }
+
+    /**
+     * Get user by email (used for retrieving user details after login)
+     */
+    public User getUserByEmail(String email) {
+        Optional<User> user = userService.findByEmail(email);
+        return user.orElseThrow(() -> new RuntimeException("User not found"));
     }
 }

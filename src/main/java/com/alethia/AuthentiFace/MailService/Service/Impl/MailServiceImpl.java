@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.alethia.AuthentiFace.MailService.DTO.MailResponse;
 import com.alethia.AuthentiFace.MailService.DTO.PageResponse;
@@ -31,6 +32,7 @@ import com.alethia.AuthentiFace.MailService.Repository.MailRecipientRepository;
 import com.alethia.AuthentiFace.MailService.Repository.MailRepository;
 import com.alethia.AuthentiFace.MailService.Service.AuthModuleInterface;
 import com.alethia.AuthentiFace.MailService.Service.MailService;
+import com.alethia.AuthentiFace.FaceVerificationService.Service.interfaces.FaceService;
 
 @Service
 @Transactional
@@ -40,18 +42,21 @@ public class MailServiceImpl implements MailService {
     private final MailRecipientRepository mailRecipientRepository;
     private final AuthModuleInterface authModuleInterface;
     private final ApplicationEventPublisher eventPublisher;
+    private final FaceService faceService;
 
     @Autowired
     public MailServiceImpl(
             MailRepository mailRepository,
             MailRecipientRepository mailRecipientRepository,
             AuthModuleInterface authModuleInterface,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            FaceService faceService
     ) {
         this.mailRepository = mailRepository;
         this.mailRecipientRepository = mailRecipientRepository;
         this.authModuleInterface = authModuleInterface;
         this.eventPublisher = eventPublisher;
+        this.faceService = faceService;
     }
 
     @Override
@@ -59,6 +64,12 @@ public class MailServiceImpl implements MailService {
         // Validate sender exists
         if (!authModuleInterface.userExistsById(senderId)) {
             throw new UserNotFoundException("Sender user not found", true);
+        }
+
+        // Perform face verification for sending mail
+        boolean isVerified = faceService.verifyFace(senderId, request.getFaceFrames());
+        if (!isVerified) {
+            throw new InvalidMailException("Face verification failed. Cannot send mail.");
         }
 
         // Validate mail content
@@ -69,6 +80,7 @@ public class MailServiceImpl implements MailService {
         mail.setSubject(request.getSubject());
         mail.setBody(request.getBody());
         mail.setSenderId(senderId);
+        mail.setIsConfidential(request.getIsConfidential() != null ? request.getIsConfidential() : false);
 
         // Save mail first
         Mail savedMail = mailRepository.save(mail);
@@ -145,6 +157,7 @@ public class MailServiceImpl implements MailService {
             response.setBody(mail.getBody());
             response.setCreatedAt(mail.getCreatedAt());
             response.setUpdatedAt(mail.getUpdatedAt());
+            response.setIsConfidential(mail.getIsConfidential());
 
             // Count recipients
             List<MailRecipient> recipients = mailRecipientRepository.findByMailIdAndIsDeletedFalse(mail.getId());
@@ -221,7 +234,45 @@ public class MailServiceImpl implements MailService {
         response.setUpdatedAt(mail.getUpdatedAt());
         response.setIsRead(mailRecipient.getIsRead());
         response.setReadAt(mailRecipient.getReadAt());
+        response.setIsConfidential(mail.getIsConfidential());
 
         return response;
+    }
+
+    @Override
+    @Transactional
+    public MailResponse openMail(UUID mailId, UUID recipientId, List<MultipartFile> faceFrames) {
+
+        System.out.println("Opening mail with ID: " + mailId + " for recipient ID: " + recipientId);
+        // Find the mail recipient entry
+        MailRecipient mailRecipient = mailRecipientRepository.findByIdAndRecipientIdAndNotDeleted(
+                mailId,
+                recipientId
+        ).orElseThrow(() -> new MailNotFoundException("Mail not found or access denied"));
+
+        Mail mail = mailRecipient.getMail();
+
+        // Check if confidential
+        if (mail.getIsConfidential() != null && mail.getIsConfidential()) {
+            System.out.println("Mail is confidential. Verifying face...");
+            // Require face verification
+            if (faceFrames == null || faceFrames.isEmpty()) {
+                throw new InvalidMailException("Face verification required for confidential mail");
+            }
+            boolean isVerified = faceService.verifyFace(recipientId, faceFrames);
+            if (!isVerified) {
+                throw new InvalidMailException("Face verification failed. Cannot open confidential mail.");
+            }
+        }
+
+        // Mark as read if not already
+        if (!mailRecipient.getIsRead()) {
+            mailRecipient.setIsRead(true);
+            mailRecipient.setReadAt(LocalDateTime.now());
+            mailRecipientRepository.save(mailRecipient);
+        }
+
+        // Return the mail response
+        return toMailResponse(mailRecipient);
     }
 }

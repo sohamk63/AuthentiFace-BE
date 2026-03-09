@@ -3,6 +3,8 @@ package com.alethia.AuthentiFace.MailService.DTO;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.web.multipart.MultipartFile;
+
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -26,6 +28,11 @@ public class SendMailRequest {
 
     @NotEmpty(message = "At least one recipient is required")
     private List<RecipientRequest> recipients;
+
+    private Boolean isConfidential = false;
+
+    @NotEmpty(message = "Face frames are required for verification")
+    private List<MultipartFile> faceFrames;
 
     @Data
     @NoArgsConstructor
