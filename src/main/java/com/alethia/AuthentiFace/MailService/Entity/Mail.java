@@ -48,8 +48,6 @@ public class Mail {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
-        isConfidential = false;
-        isDeleted = false;
     }
 
     @jakarta.persistence.PreUpdate
