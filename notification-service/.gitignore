@@ -31,27 +31,3 @@ build/
 
 ### VS Code ###
 .vscode/
-**/src/main/resources/application.yml
-
-### Python ###
-__pycache__/
-*.pyc
-*.pyo
-venv/
-.venv/
-*.egg-info/
-
-### Environment ###
-.env
-.env.*
-
-ARCHITECTURE_DIAGRAMS.md
-DEVELOPER_CHECKLIST.md
-FILE_MANIFEST.md
-HELP.md
-IMPLEMENTATION_SUMMARY.md
-INDEX.md
-MAIL_MODULE_README.md
-MAIL_MODULE.md
-QUICK_REFERENCE.md
-QUICKSTART.md
