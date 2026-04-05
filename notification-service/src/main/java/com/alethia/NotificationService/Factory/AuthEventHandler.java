@@ -22,7 +22,7 @@ public class AuthEventHandler implements EventNotificationHandler {
 
     @Override
     public boolean canHandle(AuthentiFaceEvent event) {
-        return SUPPORTED.contains(event.getEventType());
+        return SUPPORTED.contains(event.getEventType()) && event.getUserId() != null;
     }
 
     @Override

@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import com.alethia.AuthentiFace.AuthService.Service.interfaces.UserPrincipal;
+import com.fasterxml.jackson.databind.JsonNode;
 
 @CrossOrigin(origins = "*")
 @RestController
@@ -32,11 +33,11 @@ public class NotificationProxyController {
     }
 
     @GetMapping
-    public ResponseEntity<String> getNotifications(
+    public ResponseEntity<JsonNode> getNotifications(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         UUID userId = getCurrentUserId();
-        String response = webClient.get()
+        JsonNode response = webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/api/notifications")
                         .queryParam("page", page)
@@ -44,19 +45,19 @@ public class NotificationProxyController {
                         .build())
                 .header("X-Internal-User-Id", userId.toString())
                 .retrieve()
-                .bodyToMono(String.class)
+                .bodyToMono(JsonNode.class)
                 .block();
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/unread-count")
-    public ResponseEntity<String> getUnreadCount() {
+    public ResponseEntity<JsonNode> getUnreadCount() {
         UUID userId = getCurrentUserId();
-        String response = webClient.get()
+        JsonNode response = webClient.get()
                 .uri("/api/notifications/unread-count")
                 .header("X-Internal-User-Id", userId.toString())
                 .retrieve()
-                .bodyToMono(String.class)
+                .bodyToMono(JsonNode.class)
                 .block();
         return ResponseEntity.ok(response);
     }
