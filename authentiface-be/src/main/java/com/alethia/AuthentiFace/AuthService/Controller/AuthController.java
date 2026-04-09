@@ -10,9 +10,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.alethia.AuthentiFace.AuthService.DTOs.LoginDto;
+
+import java.util.List;
 import com.alethia.AuthentiFace.AuthService.DTOs.LoginResponseDto;
 import com.alethia.AuthentiFace.AuthService.DTOs.RegisterUserDto;
 import com.alethia.AuthentiFace.AuthService.Entities.User;
@@ -61,6 +65,32 @@ public class AuthController {
         registerService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body("User registered successfully");
+    }
+
+    @PostMapping("/face-login")
+    public ResponseEntity<?> faceLogin(
+            @RequestParam("email") String email,
+            @RequestParam("frames") List<MultipartFile> frames
+    ) {
+        try {
+            LoginResponseDto response = loginService.faceLogin(email, frames);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException ex) {
+            Map<String, String> error = new HashMap<>();
+            if ("FACE_NOT_ENROLLED".equals(ex.getMessage())) {
+                error.put("error", "FACE_NOT_ENROLLED");
+                error.put("message", "Face not enrolled. Please login with password first and enroll your face.");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+            } else if (ex.getMessage() != null && ex.getMessage().contains("User not found")) {
+                error.put("error", "USER_NOT_FOUND");
+                error.put("message", "No account found with this email.");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+            } else {
+                error.put("error", "FACE_VERIFICATION_FAILED");
+                error.put("message", ex.getMessage());
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
+            }
+        }
     }
 
     @GetMapping("/face-enrollment-status")
