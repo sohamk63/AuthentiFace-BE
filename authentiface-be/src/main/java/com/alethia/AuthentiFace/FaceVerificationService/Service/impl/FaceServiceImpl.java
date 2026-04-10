@@ -11,12 +11,15 @@ import org.springframework.web.multipart.MultipartFile;
 import com.alethia.AuthentiFace.AuthService.Entities.User;
 import com.alethia.AuthentiFace.AuthService.Repository.UserRepository;
 import com.alethia.AuthentiFace.FaceVerificationService.Entity.FaceProfile;
-import com.alethia.AuthentiFace.FaceVerificationService.Exception.FaceProfileNotFoundException;
 import com.alethia.AuthentiFace.FaceVerificationService.Repository.FaceProfileRepository;
 import com.alethia.AuthentiFace.FaceVerificationService.Service.interfaces.FaceImageStorageService;
 import com.alethia.AuthentiFace.FaceVerificationService.Service.interfaces.FaceService;
 import com.alethia.AuthentiFace.FaceVerificationService.Service.interfaces.FaceVerificationClient;
 import com.alethia.AuthentiFace.Kafka.producer.KafkaEventPublisher;
+import com.alethia.AuthentiFace.config.CacheNames;
+
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 
 @Service
 public class FaceServiceImpl implements FaceService {
@@ -26,21 +29,28 @@ public class FaceServiceImpl implements FaceService {
     private final FaceVerificationClient faceVerificationClient;
     private final UserRepository userRepository;
     private final KafkaEventPublisher kafkaEventPublisher;
+    private final CachedEmbeddingProvider cachedEmbeddingProvider;
 
     public FaceServiceImpl(FaceProfileRepository faceProfileRepository,
             FaceImageStorageService faceImageStorageService,
             FaceVerificationClient faceVerificationClient,
             UserRepository userRepository,
-            KafkaEventPublisher kafkaEventPublisher) {
+            KafkaEventPublisher kafkaEventPublisher,
+            CachedEmbeddingProvider cachedEmbeddingProvider) {
         this.faceProfileRepository = faceProfileRepository;
         this.faceImageStorageService = faceImageStorageService;
         this.faceVerificationClient = faceVerificationClient;
         this.userRepository = userRepository;
         this.kafkaEventPublisher = kafkaEventPublisher;
+        this.cachedEmbeddingProvider = cachedEmbeddingProvider;
     }
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = CacheNames.FACE_EMBEDDINGS, key = "#userId"),
+            @CacheEvict(value = CacheNames.FACE_ENROLLMENT_STATUS, key = "#userId")
+    })
     public void enrollFace(UUID userId, List<MultipartFile> frames) {
 
         if (frames == null || frames.isEmpty()) {
@@ -107,16 +117,7 @@ public class FaceServiceImpl implements FaceService {
     @Override
     @Transactional(readOnly = true)
     public boolean verifyFace(UUID userId, List<MultipartFile> frames) {
-        // Fetch active profile for user
-        Optional<FaceProfile> profile = faceProfileRepository.findByUserIdAndIsActiveTrue(userId);
-
-        if (profile.isEmpty()) {
-            throw new FaceProfileNotFoundException(
-                "No active face profile found for user: " + userId);
-        }
-
-        // Verify against the stored embedding
-        String storedEmbedding = profile.get().getEmbedding();
+        String storedEmbedding = cachedEmbeddingProvider.getStoredEmbedding(userId);
         boolean result = faceVerificationClient.verify(storedEmbedding, frames);
 
         if (!result) {

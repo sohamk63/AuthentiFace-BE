@@ -32,6 +32,10 @@ import com.alethia.AuthentiFace.MailService.Service.AuthModuleInterface;
 import com.alethia.AuthentiFace.MailService.Service.MailService;
 import com.alethia.AuthentiFace.FaceVerificationService.Service.interfaces.FaceService;
 import com.alethia.AuthentiFace.Kafka.producer.KafkaEventPublisher;
+import com.alethia.AuthentiFace.config.CacheNames;
+
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 
 @Service
 @Transactional
@@ -178,6 +182,7 @@ public class MailServiceImpl implements MailService {
     }
 
     @Override
+    @CacheEvict(value = CacheNames.UNREAD_MAIL_COUNT, key = "#recipientId")
     public void markAsRead(UUID mailId, UUID recipientId) {
         MailRecipient mailRecipient = mailRecipientRepository.findByIdAndRecipientIdAndNotDeleted(
                 mailId,
@@ -193,6 +198,7 @@ public class MailServiceImpl implements MailService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = CacheNames.UNREAD_MAIL_COUNT, key = "#recipientId")
     public long getUnreadCount(UUID recipientId) {
         return mailRecipientRepository.countUnreadByRecipient(recipientId);
     }

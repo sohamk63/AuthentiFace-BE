@@ -8,7 +8,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -21,7 +20,6 @@ import com.alethia.AuthentiFace.FaceVerificationService.DTO.EnrollFaceResponse;
 import com.alethia.AuthentiFace.FaceVerificationService.DTO.VerifyFaceResponse;
 import com.alethia.AuthentiFace.FaceVerificationService.Service.interfaces.FaceService;
 
-@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/api/face")
 public class FaceController {
