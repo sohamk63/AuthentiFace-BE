@@ -49,11 +49,12 @@ public class JwtAuthenticationGatewayFilterFactory
 
             Claims claims = jwtValidator.validateAndExtract(token);
             String username = claims.getSubject();
+            String userId = claims.get("userId", String.class);
 
             // Forward identity to downstream services
             ServerWebExchange mutatedExchange = exchange.mutate()
                     .request(r -> r
-                            .header("X-Internal-User-Id", username)
+                            .header("X-Internal-User-Id", userId != null ? userId : username)
                             .header("X-Internal-Roles", claims.get("roles", String.class)))
                     .build();
 

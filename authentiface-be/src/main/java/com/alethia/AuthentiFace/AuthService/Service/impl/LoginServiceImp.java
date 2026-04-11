@@ -19,9 +19,12 @@ import com.alethia.AuthentiFace.AuthService.DTOs.LoginResponseDto;
 import com.alethia.AuthentiFace.AuthService.Entities.User;
 import com.alethia.AuthentiFace.AuthService.Service.interfaces.JwtService;
 import com.alethia.AuthentiFace.AuthService.Service.interfaces.LoginService;
+import com.alethia.AuthentiFace.AuthService.Service.interfaces.UserPrincipal;
 import com.alethia.AuthentiFace.AuthService.Service.interfaces.UserService;
 import com.alethia.AuthentiFace.FaceVerificationService.Service.interfaces.FaceService;
-import com.alethia.AuthentiFace.Kafka.producer.KafkaEventPublisher;
+import com.alethia.AuthentiFace.Common.Event.DomainEventPublisher;
+import com.alethia.AuthentiFace.Common.Event.LoginSuccessDomainEvent;
+import com.alethia.AuthentiFace.Common.Event.LoginFailedDomainEvent;
 
 @Service
 public class LoginServiceImp implements LoginService {
@@ -29,15 +32,17 @@ public class LoginServiceImp implements LoginService {
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final UserService userService;
-    private final KafkaEventPublisher kafkaEventPublisher;
+    private final DomainEventPublisher domainEventPublisher;
     private final FaceService faceService;
     
     @Autowired
-    public LoginServiceImp(AuthenticationManager authenticationManager, JwtService jwtService, UserService userService, KafkaEventPublisher kafkaEventPublisher, FaceService faceService){
+    public LoginServiceImp(AuthenticationManager authenticationManager, JwtService jwtService,
+                           UserService userService, DomainEventPublisher domainEventPublisher,
+                           FaceService faceService) {
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.userService = userService;
-        this.kafkaEventPublisher = kafkaEventPublisher;
+        this.domainEventPublisher = domainEventPublisher;
         this.faceService = faceService;
     }
 
@@ -48,14 +53,16 @@ public class LoginServiceImp implements LoginService {
             Authentication auth = authenticationManager.authenticate(usernamePasswordAuthenticationToken);
             String token = jwtService.getToken(auth);
 
-            // Publish login success event
+            // Observer pattern: publish domain event instead of calling Kafka directly
             Optional<User> user = userService.findByEmail(loginReq.getEmail());
-            user.ifPresent(u -> kafkaEventPublisher.publishLoginSuccess(u.getUserId(), u.getEmail()));
+            user.ifPresent(u -> domainEventPublisher.publish(
+                    new LoginSuccessDomainEvent(u.getUserId(), u.getEmail())));
 
             return token;
         } catch (BadCredentialsException ex) {
-            // Publish login failed event
-            kafkaEventPublisher.publishLoginFailed(loginReq.getEmail(), "Invalid credentials");
+            // Observer pattern: publish login failed domain event
+            domainEventPublisher.publish(
+                    new LoginFailedDomainEvent(loginReq.getEmail(), "Invalid credentials"));
             throw ex;
         }
     }
@@ -68,14 +75,14 @@ public class LoginServiceImp implements LoginService {
 
         // 2. Check if face is enrolled
         if (user.getFaceEnrolled() == null || !user.getFaceEnrolled()) {
-            kafkaEventPublisher.publishLoginFailed(email, "Face not enrolled");
+            domainEventPublisher.publish(new LoginFailedDomainEvent(email, "Face not enrolled"));
             throw new RuntimeException("FACE_NOT_ENROLLED");
         }
 
         // 3. Verify face
         boolean verified = faceService.verifyFace(user.getUserId(), frames);
         if (!verified) {
-            kafkaEventPublisher.publishLoginFailed(email, "Face verification failed");
+            domainEventPublisher.publish(new LoginFailedDomainEvent(email, "Face verification failed"));
             throw new RuntimeException("Face verification failed. Please try again.");
         }
 
@@ -83,11 +90,12 @@ public class LoginServiceImp implements LoginService {
         Collection<GrantedAuthority> authorities = user.getRole().stream()
                 .map(role -> (GrantedAuthority) new SimpleGrantedAuthority(role.name()))
                 .toList();
-        Authentication auth = new UsernamePasswordAuthenticationToken(email, null, authorities);
+        UserPrincipal principal = new UserPrincipal(user);
+        Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, authorities);
         String token = jwtService.getToken(auth);
 
-        // 5. Publish login success event
-        kafkaEventPublisher.publishLoginSuccess(user.getUserId(), user.getEmail());
+        // 5. Observer pattern: publish login success domain event
+        domainEventPublisher.publish(new LoginSuccessDomainEvent(user.getUserId(), user.getEmail()));
 
         return new LoginResponseDto(token, user.getFaceEnrolled());
     }

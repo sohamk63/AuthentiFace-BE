@@ -10,6 +10,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 
 import com.alethia.AuthentiFace.AuthService.Service.interfaces.JwtService;
+import com.alethia.AuthentiFace.AuthService.Service.interfaces.UserPrincipal;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -28,6 +29,8 @@ public class JwtServiceImp implements JwtService {
     public String getToken(Authentication authentication) {
 
         String username = authentication.getName();
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        String userId = principal.getUserId().toString();
 
         String roles = authentication.getAuthorities()
                 .stream()
@@ -40,6 +43,7 @@ public class JwtServiceImp implements JwtService {
         Key key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
         return Jwts.builder()
                 .setSubject(username)
+                .claim("userId", userId)
                 .claim("roles", roles)
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)

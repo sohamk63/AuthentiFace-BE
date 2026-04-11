@@ -1,49 +1,34 @@
 package com.alethia.AuthentiFace.FaceVerificationService.Exception;
 
-import java.time.LocalDateTime;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.alethia.AuthentiFace.Common.ErrorResponse;
+import com.alethia.AuthentiFace.Common.ErrorResponseFactory;
 
+/**
+ * Uses FACTORY PATTERN (ErrorResponseFactory) + BUILDER PATTERN (ErrorResponse.builder())
+ * to eliminate the repetitive error response construction that was in every handler.
+ */
 @RestControllerAdvice
 public class FaceExceptionHandler {
 
     @ExceptionHandler(FaceProfileNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleFaceProfileNotFoundException(
             FaceProfileNotFoundException ex) {
-        ErrorResponse errorResponse = new ErrorResponse();
-        errorResponse.setStatus(HttpStatus.NOT_FOUND.value());
-        errorResponse.setError("FaceProfileNotFound");
-        errorResponse.setMessage(ex.getMessage());
-        errorResponse.setTimestamp(LocalDateTime.now());
-
-        return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
+        return ErrorResponseFactory.create(HttpStatus.NOT_FOUND, "FaceProfileNotFound", ex.getMessage());
     }
 
     @ExceptionHandler(FaceVerificationFailedException.class)
     public ResponseEntity<ErrorResponse> handleFaceVerificationFailedException(
             FaceVerificationFailedException ex) {
-        ErrorResponse errorResponse = new ErrorResponse();
-        errorResponse.setStatus(HttpStatus.BAD_REQUEST.value());
-        errorResponse.setError("FaceVerificationFailed");
-        errorResponse.setMessage(ex.getMessage());
-        errorResponse.setTimestamp(LocalDateTime.now());
-
-        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        return ErrorResponseFactory.create(HttpStatus.BAD_REQUEST, "FaceVerificationFailed", ex.getMessage());
     }
 
     @ExceptionHandler(FaceException.class)
     public ResponseEntity<ErrorResponse> handleFaceException(FaceException ex) {
-        ErrorResponse errorResponse = new ErrorResponse();
-        errorResponse.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
-        errorResponse.setError("FaceServiceError");
-        errorResponse.setMessage(ex.getMessage());
-        errorResponse.setTimestamp(LocalDateTime.now());
-
-        return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+        return ErrorResponseFactory.create(HttpStatus.INTERNAL_SERVER_ERROR, "FaceServiceError", ex.getMessage());
     }
 }

@@ -1,5 +1,7 @@
 package com.alethia.AuthentiFace.MailService.Service;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -41,4 +43,12 @@ public interface AuthModuleInterface {
      * @return Optional containing UUID if user exists, empty otherwise
      */
     Optional<UUID> getUserIdByEmail(String email);
+
+    /**
+     * BATCH: Get user IDs for multiple emails in a single query.
+     *
+     * @param emails List of user emails
+     * @return Map of email → userId for all found users
+     */
+    Map<String, UUID> getUserIdsByEmails(List<String> emails);
 }

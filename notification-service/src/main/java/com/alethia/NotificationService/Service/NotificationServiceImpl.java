@@ -87,17 +87,20 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.save(notification);
     }
 
+    /**
+     * BATCH OPTIMIZATION: Instead of loading ALL notifications (read + unread) and saving
+     * each one individually in a loop (N+1 problem), we:
+     * 1. Query ONLY unread notifications (fewer rows loaded)
+     * 2. Set status in-memory
+     * 3. Batch-save all at once with saveAll() (single flush)
+     */
     @Override
     public void markAllAsRead(UUID userId) {
-        Page<Notification> unread = notificationRepository.findByUserIdOrderByCreatedAtDesc(
-                userId, Pageable.unpaged());
+        List<Notification> unread = notificationRepository.findByUserIdAndStatus(
+                userId, NotificationStatus.UNREAD);
 
-        unread.getContent().stream()
-                .filter(n -> n.getStatus() == NotificationStatus.UNREAD)
-                .forEach(n -> {
-                    n.setStatus(NotificationStatus.READ);
-                    notificationRepository.save(n);
-                });
+        unread.forEach(n -> n.setStatus(NotificationStatus.READ));
+        notificationRepository.saveAll(unread);
     }
 
     @Override

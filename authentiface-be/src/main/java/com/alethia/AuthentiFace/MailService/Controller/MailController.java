@@ -5,7 +5,9 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -26,6 +28,12 @@ import com.alethia.AuthentiFace.MailService.DTO.SendMailRequest;
 import com.alethia.AuthentiFace.MailService.DTO.SendMailResponse;
 import com.alethia.AuthentiFace.MailService.DTO.SentMailResponse;
 import com.alethia.AuthentiFace.MailService.DTO.OpenMailRequest;
+import com.alethia.AuthentiFace.MailService.Entity.Attachment;
+import com.alethia.AuthentiFace.MailService.Exception.MailNotFoundException;
+import com.alethia.AuthentiFace.MailService.Exception.UnauthorizedException;
+import com.alethia.AuthentiFace.MailService.Repository.AttachmentRepository;
+import com.alethia.AuthentiFace.MailService.Repository.MailRecipientRepository;
+import com.alethia.AuthentiFace.MailService.Service.AttachmentStorageService;
 import com.alethia.AuthentiFace.MailService.Service.MailService;
 
 import jakarta.validation.Valid;
@@ -36,10 +44,19 @@ import jakarta.validation.Valid;
 public class MailController {
 
     private final MailService mailService;
+    private final AttachmentRepository attachmentRepository;
+    private final AttachmentStorageService attachmentStorageService;
+    private final MailRecipientRepository mailRecipientRepository;
 
     @Autowired
-    public MailController(MailService mailService) {
+    public MailController(MailService mailService,
+                          AttachmentRepository attachmentRepository,
+                          AttachmentStorageService attachmentStorageService,
+                          MailRecipientRepository mailRecipientRepository) {
         this.mailService = mailService;
+        this.attachmentRepository = attachmentRepository;
+        this.attachmentStorageService = attachmentStorageService;
+        this.mailRecipientRepository = mailRecipientRepository;
     }
 
     @GetMapping("/test")
@@ -174,5 +191,30 @@ public class MailController {
         public void setUnreadCount(long unreadCount) {
             this.unreadCount = unreadCount;
         }
+    }
+
+    @GetMapping("/attachments/{attachmentId}")
+    public ResponseEntity<byte[]> downloadAttachment(@PathVariable UUID attachmentId) {
+        UUID userId = getAuthenticatedUserId();
+
+        Attachment attachment = attachmentRepository.findById(attachmentId)
+                .orElseThrow(() -> new MailNotFoundException("Attachment not found"));
+
+        UUID mailId = attachment.getMail().getId();
+        boolean isSender = attachment.getMail().getSenderId().equals(userId);
+        boolean isRecipient = mailRecipientRepository.isUserRecipientOfMail(mailId, userId);
+
+        if (!isSender && !isRecipient) {
+            throw new UnauthorizedException("You are not authorized to download this attachment");
+        }
+
+        byte[] data = attachmentStorageService.retrieve(attachment.getStorageKey());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + attachment.getOriginalFileName() + "\"")
+                .contentType(MediaType.parseMediaType(attachment.getContentType()))
+                .contentLength(data.length)
+                .body(data);
     }
 }

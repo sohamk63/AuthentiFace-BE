@@ -1,5 +1,6 @@
 package com.alethia.NotificationService.Repository;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -14,6 +15,8 @@ import com.alethia.NotificationService.Entity.NotificationStatus;
 public interface NotificationRepository extends JpaRepository<Notification, UUID> {
 
     Page<Notification> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
+
+    List<Notification> findByUserIdAndStatus(UUID userId, NotificationStatus status);
 
     long countByUserIdAndStatus(UUID userId, NotificationStatus status);
 }

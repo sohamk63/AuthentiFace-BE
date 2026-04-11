@@ -34,6 +34,8 @@ public class SendMailRequest {
     @NotEmpty(message = "Face frames are required for verification")
     private List<MultipartFile> faceFrames;
 
+    private List<MultipartFile> attachments;
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

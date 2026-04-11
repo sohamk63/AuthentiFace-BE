@@ -46,5 +46,8 @@ public class User {
 
     @Column(columnDefinition = "boolean default false")
     private Boolean faceEnrolled = false;
+
+    @Column
+    private String profilePhotoKey;
     
 }

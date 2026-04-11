@@ -3,22 +3,32 @@ package com.alethia.AuthentiFace.MailService.Service.Impl;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.alethia.AuthentiFace.MailService.DTO.AttachmentResponse;
 import com.alethia.AuthentiFace.MailService.DTO.MailResponse;
 import com.alethia.AuthentiFace.MailService.DTO.PageResponse;
 import com.alethia.AuthentiFace.MailService.DTO.SendMailRequest;
 import com.alethia.AuthentiFace.MailService.DTO.SendMailRequest.RecipientRequest;
 import com.alethia.AuthentiFace.MailService.DTO.SendMailResponse;
 import com.alethia.AuthentiFace.MailService.DTO.SentMailResponse;
+import com.alethia.AuthentiFace.MailService.Entity.Attachment;
 import com.alethia.AuthentiFace.MailService.Entity.Mail;
 import com.alethia.AuthentiFace.MailService.Entity.MailRecipient;
 import com.alethia.AuthentiFace.MailService.Entity.MailRecipient.RecipientType;
@@ -26,12 +36,16 @@ import com.alethia.AuthentiFace.MailService.Exception.InvalidMailException;
 import com.alethia.AuthentiFace.MailService.Exception.MailNotFoundException;
 import com.alethia.AuthentiFace.MailService.Exception.UnauthorizedException;
 import com.alethia.AuthentiFace.MailService.Exception.UserNotFoundException;
+import com.alethia.AuthentiFace.MailService.Repository.AttachmentRepository;
 import com.alethia.AuthentiFace.MailService.Repository.MailRecipientRepository;
 import com.alethia.AuthentiFace.MailService.Repository.MailRepository;
 import com.alethia.AuthentiFace.MailService.Service.AuthModuleInterface;
 import com.alethia.AuthentiFace.MailService.Service.MailService;
 import com.alethia.AuthentiFace.FaceVerificationService.Service.interfaces.FaceService;
-import com.alethia.AuthentiFace.Kafka.producer.KafkaEventPublisher;
+import com.alethia.AuthentiFace.Common.Event.DomainEventPublisher;
+import com.alethia.AuthentiFace.Common.Event.MailSentDomainEvent;
+import com.alethia.AuthentiFace.MailService.Service.Strategy.MailVerificationStrategy;
+import com.alethia.AuthentiFace.MailService.Service.Strategy.MailVerificationStrategyResolver;
 import com.alethia.AuthentiFace.config.CacheNames;
 
 import org.springframework.cache.annotation.CacheEvict;
@@ -41,97 +55,119 @@ import org.springframework.cache.annotation.Cacheable;
 @Transactional
 public class MailServiceImpl implements MailService {
 
+    private static final Logger log = LoggerFactory.getLogger(MailServiceImpl.class);
+
     private final MailRepository mailRepository;
     private final MailRecipientRepository mailRecipientRepository;
+    private final AttachmentRepository attachmentRepository;
     private final AuthModuleInterface authModuleInterface;
-    private final KafkaEventPublisher kafkaEventPublisher;
+    private final DomainEventPublisher domainEventPublisher;
     private final FaceService faceService;
+    private final MailVerificationStrategyResolver strategyResolver;
+    private final AsyncMailProcessor asyncMailProcessor;
+    private final AttachmentValidator attachmentValidator;
+    private final Executor eventExecutor;
 
     @Autowired
     public MailServiceImpl(
             MailRepository mailRepository,
             MailRecipientRepository mailRecipientRepository,
+            AttachmentRepository attachmentRepository,
             AuthModuleInterface authModuleInterface,
-            KafkaEventPublisher kafkaEventPublisher,
-            FaceService faceService
+            DomainEventPublisher domainEventPublisher,
+            FaceService faceService,
+            MailVerificationStrategyResolver strategyResolver,
+            AsyncMailProcessor asyncMailProcessor,
+            AttachmentValidator attachmentValidator,
+            @Qualifier("eventExecutor") Executor eventExecutor
     ) {
         this.mailRepository = mailRepository;
         this.mailRecipientRepository = mailRecipientRepository;
+        this.attachmentRepository = attachmentRepository;
         this.authModuleInterface = authModuleInterface;
-        this.kafkaEventPublisher = kafkaEventPublisher;
+        this.domainEventPublisher = domainEventPublisher;
         this.faceService = faceService;
+        this.strategyResolver = strategyResolver;
+        this.asyncMailProcessor = asyncMailProcessor;
+        this.attachmentValidator = attachmentValidator;
+        this.eventExecutor = eventExecutor;
     }
 
+    /**
+     * ASYNC MAIL SENDING — optimized execution order:
+     *
+     * SYNCHRONOUS (user waits):
+     *   1. Validate mail content        — FREE, fail fast on bad input
+     *   2. Validate sender exists       — 1 DB query
+     *   3. Batch-validate all recipients— 1 DB query (not N individual lookups)
+     *   4. Face verification            — HTTP ~500ms (only after cheap validations pass)
+     *   5. Save mail entity             — 1 DB insert (need mailId for response)
+     *   6. Return response              — user gets instant feedback
+     *
+     * ASYNCHRONOUS (after transaction commits, user already has response):
+     *   7. Batch-save recipients        — 1 saveAll() instead of N individual saves
+     *   8. Publish domain event         — triggers Kafka notifications asynchronously
+     *
+     * BEFORE: ~500ms face verify + N recipient DB lookups + N recipient inserts + event publish
+     * AFTER:  ~500ms face verify + 1 batch lookup + mail save → RETURN → async recipients + event
+     */
     @Override
     public SendMailResponse sendMail(UUID senderId, SendMailRequest request) {
-        // Validate sender exists
+        // 1. Validate content FIRST (free, fail fast — no I/O needed)
+        validateMailRequest(request);
+
+        // 1b. Validate attachments at boundary (file type, size)
+        attachmentValidator.validate(request.getAttachments());
+
+        // 2. Validate sender exists
         if (!authModuleInterface.userExistsById(senderId)) {
             throw new UserNotFoundException("Sender user not found", true);
         }
 
-        // Perform face verification for sending mail
+        // 3. BATCH: Validate ALL recipients exist in a single query (instead of N queries)
+        List<String> recipientEmails = request.getRecipients().stream()
+                .map(SendMailRequest.RecipientRequest::getEmail)
+                .toList();
+        Map<String, UUID> recipientMap = authModuleInterface.getUserIdsByEmails(recipientEmails);
+
+        for (SendMailRequest.RecipientRequest r : request.getRecipients()) {
+            if (!recipientMap.containsKey(r.getEmail())) {
+                throw new UserNotFoundException(r.getEmail());
+            }
+        }
+
+        // 4. Face verification (expensive HTTP call — only run after all cheap validations pass)
         boolean isVerified = faceService.verifyFace(senderId, request.getFaceFrames());
         if (!isVerified) {
             throw new InvalidMailException("Face verification failed. Cannot send mail.");
         }
 
-        // Validate mail content
-        validateMailRequest(request);
-
-        // Create mail entity
+        // 5. Save mail entity (synchronous — we need the ID for the response)
         Mail mail = new Mail();
         mail.setSubject(request.getSubject());
         mail.setBody(request.getBody());
         mail.setSenderId(senderId);
         mail.setIsConfidential(request.getIsConfidential() != null ? request.getIsConfidential() : false);
-
-        // Save mail first
         Mail savedMail = mailRepository.save(mail);
 
-        // Create and save mail recipients
-        List<UUID> recipientIds = new ArrayList<>();
-        for (RecipientRequest recipientReq : request.getRecipients()) {
-            // Validate recipient exists
-            UUID recipientId = authModuleInterface.getUserIdByEmail(recipientReq.getEmail())
-                    .orElseThrow(() -> new UserNotFoundException(recipientReq.getEmail()));
+        // 6. ASYNC: Schedule recipient processing + event publishing AFTER this transaction commits
+        //    The user gets their response immediately — doesn't wait for N recipient inserts
+        UUID mailId = savedMail.getId();
+        boolean isConfidential = savedMail.getIsConfidential() != null && savedMail.getIsConfidential();
+        List<SendMailRequest.RecipientRequest> recipientReqs = request.getRecipients();
+        List<MultipartFile> attachments = request.getAttachments();
 
-            // // Prevent self-sending
-            // if (recipientId.equals(senderId)) {
-            //     throw new InvalidMailException("Cannot send mail to yourself");
-            // }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                CompletableFuture.runAsync(
+                        () -> asyncMailProcessor.processRecipientsAndNotify(
+                                mailId, senderId, recipientReqs, recipientMap, isConfidential, attachments),
+                        eventExecutor);
+            }
+        });
 
-            // Create mail recipient entry
-            MailRecipient recipient = new MailRecipient();
-            recipient.setMail(savedMail);
-            recipient.setRecipientId(recipientId);
-            recipient.setType(RecipientType.valueOf(recipientReq.getType().toUpperCase()));
-            recipient.setIsRead(false);
-            recipient.setIsDeleted(false);
-
-            mailRecipientRepository.save(recipient);
-            recipientIds.add(recipientId);
-        }
-
-        // Publish Kafka event for mail sent
-        String senderEmail = authModuleInterface.getUserEmailById(senderId).orElse("unknown");
-        kafkaEventPublisher.publishMailSent(
-                senderId,
-                senderEmail,
-                savedMail.getId(),
-                recipientIds
-        );
-
-        // Also publish events for each recipient (mail received)
-        for (UUID recipientId : recipientIds) {
-            kafkaEventPublisher.publishMailReceived(
-                    recipientId,
-                    savedMail.getId(),
-                    senderEmail,
-                    savedMail.getIsConfidential() != null && savedMail.getIsConfidential()
-            );
-        }
-
-        // Return response
+        // 7. Return response immediately
         SendMailResponse response = new SendMailResponse();
         response.setMessage("Mail sent successfully");
         response.setMailId(savedMail.getId().toString());
@@ -170,6 +206,7 @@ public class MailServiceImpl implements MailService {
             response.setCreatedAt(mail.getCreatedAt());
             response.setUpdatedAt(mail.getUpdatedAt());
             response.setIsConfidential(mail.getIsConfidential());
+            response.setAttachments(toAttachmentResponses(mail.getId()));
 
             // Count recipients
             List<MailRecipient> recipients = mailRecipientRepository.findByMailIdAndIsDeletedFalse(mail.getId());
@@ -249,15 +286,22 @@ public class MailServiceImpl implements MailService {
         response.setIsRead(mailRecipient.getIsRead());
         response.setReadAt(mailRecipient.getReadAt());
         response.setIsConfidential(mail.getIsConfidential());
+        response.setAttachments(toAttachmentResponses(mail.getId()));
 
         return response;
     }
 
+    /**
+     * DESIGN PATTERN: Strategy
+     * 
+     * Instead of if/else checking mail.isConfidential here, we delegate to
+     * the appropriate MailVerificationStrategy selected by the StrategyResolver.
+     * This makes it easy to add new strategies (OTP, PIN, etc.) without modifying this method.
+     */
     @Override
     @Transactional
     public MailResponse openMail(UUID mailId, UUID recipientId, List<MultipartFile> faceFrames) {
 
-        System.out.println("Opening mail with ID: " + mailId + " for recipient ID: " + recipientId);
         // Find the mail recipient entry
         MailRecipient mailRecipient = mailRecipientRepository.findByIdAndRecipientIdAndNotDeleted(
                 mailId,
@@ -266,18 +310,9 @@ public class MailServiceImpl implements MailService {
 
         Mail mail = mailRecipient.getMail();
 
-        // Check if confidential
-        if (mail.getIsConfidential() != null && mail.getIsConfidential()) {
-            System.out.println("Mail is confidential. Verifying face...");
-            // Require face verification
-            if (faceFrames == null || faceFrames.isEmpty()) {
-                throw new InvalidMailException("Face verification required for confidential mail");
-            }
-            boolean isVerified = faceService.verifyFace(recipientId, faceFrames);
-            if (!isVerified) {
-                throw new InvalidMailException("Face verification failed. Cannot open confidential mail.");
-            }
-        }
+        // Strategy pattern: resolve and execute the correct verification strategy
+        MailVerificationStrategy strategy = strategyResolver.resolve(mail);
+        strategy.verify(recipientId, faceFrames);
 
         // Mark as read if not already
         if (!mailRecipient.getIsRead()) {
@@ -288,5 +323,16 @@ public class MailServiceImpl implements MailService {
 
         // Return the mail response
         return toMailResponse(mailRecipient);
+    }
+
+    private List<AttachmentResponse> toAttachmentResponses(UUID mailId) {
+        return attachmentRepository.findByMailId(mailId).stream()
+                .map(a -> AttachmentResponse.builder()
+                        .id(a.getId())
+                        .originalFileName(a.getOriginalFileName())
+                        .contentType(a.getContentType())
+                        .fileSize(a.getFileSize())
+                        .build())
+                .toList();
     }
 }

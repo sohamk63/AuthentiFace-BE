@@ -1,6 +1,7 @@
 package com.alethia.AuthentiFace.MailService.DTO;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import lombok.AllArgsConstructor;
@@ -25,4 +26,6 @@ public class SentMailResponse {
     private LocalDateTime updatedAt;
 
     private Boolean isConfidential;
+
+    private List<AttachmentResponse> attachments;
 }
